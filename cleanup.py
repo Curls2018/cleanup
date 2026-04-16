@@ -56,11 +56,22 @@ def delete_as_system(path):
     if not os.path.isfile(psexec):
         raise FileNotFoundError("找不到 PsExec.exe: %s" % psexec)
 
-    cmd = [psexec, "-accepteula", "-s",
-           "cmd", "/c", 'rd /s /q "%s"' % path]
-    print("      执行: %s" % " ".join(cmd))
-    r = subprocess.call(cmd)
-    return r
+    # 写临时 bat 文件避免路径引号经多层传递后丢失
+    bat = r"C:\Windows\Temp\_cleanup_system.bat"
+    with open(bat, "w") as f:
+        f.write("@echo off\n")
+        f.write('rd /s /q "%s"\n' % path)
+
+    try:
+        cmd = [psexec, "-accepteula", "-s", bat]
+        print("      执行: %s" % " ".join(cmd))
+        r = subprocess.call(cmd)
+        return r
+    finally:
+        try:
+            os.remove(bat)
+        except Exception:
+            pass
 
 
 def delete_files(pattern):
