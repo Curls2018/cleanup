@@ -59,32 +59,43 @@ def delete_files(pattern):
 
 
 if __name__ == "__main__":
-    # ── 步骤 1：删除 SocketTest 文件 ──────────────────────────────────
-    SOCKETTEST = r"D:\SocketTest\*.*"
-    print("[1/3] 删除 %s ..." % SOCKETTEST)
-    n = delete_files(SOCKETTEST)
-    print("      已删除 %d 个文件" % n)
+    try:
+        # ── 步骤 1：删除 SocketTest 文件 ──────────────────────────────────
+        SOCKETTEST = r"D:\SocketTest\*.*"
+        print("[1/3] 删除 %s ..." % SOCKETTEST)
+        n = delete_files(SOCKETTEST)
+        print("      已删除 %d 个文件" % n)
 
-    # ── 步骤 2：将 SogouPY Backup 发送到回收站 ─────────────────────────
-    BACKUP = r"D:\sangforupm\Users\Administrator\AppData\LocalLow\SogouPY\Backup"
-    print("[2/3] 发送到回收站: %s" % BACKUP)
-    if not os.path.exists(BACKUP):
-        print("      目录不存在，跳过")
-    else:
-        ret = send_to_recycle(BACKUP)
-        if ret == 0:
-            print("      成功发送到回收站")
+        # ── 步骤 2：将 SogouPY Backup 发送到回收站 ─────────────────────────
+        BACKUP = r"D:\sangforupm\Users\Administrator\AppData\LocalLow\SogouPY\Backup"
+        print("[2/3] 发送到回收站: %s" % BACKUP)
+        if not os.path.exists(BACKUP):
+            print("      目录不存在，跳过")
         else:
-            print("      失败，错误码: %d" % ret)
-            sys.exit(1)
+            ret = send_to_recycle(BACKUP)
+            if ret == 0:
+                print("      成功发送到回收站")
+                # 验证目录是否已消失
+                if os.path.exists(BACKUP):
+                    print("      警告: 目录仍存在（可能在回收站中）")
+                else:
+                    print("      确认: 目录已移除")
+            else:
+                print("      失败，SHFileOperationW 错误码: 0x%X (%d)" % (ret, ret))
 
-    # ── 步骤 3：清空回收站 ────────────────────────────────────────────
-    print("[3/3] 清空回收站 ...")
-    ret = empty_recycle_bin()
-    if ret == 0:
-        print("      回收站已清空")
-    else:
-        print("      注意: SHEmptyRecycleBin 返回 %d" % ret)
+        # ── 步骤 3：清空回收站 ────────────────────────────────────────────
+        print("[3/3] 清空回收站 ...")
+        ret = empty_recycle_bin()
+        if ret == 0:
+            print("      回收站已清空")
+        else:
+            print("      注意: SHEmptyRecycleBin 返回 0x%X (%d)" % (ret, ret))
 
-    print("\n全部完成。")
-    os.system("pause")
+        print("\n全部完成。")
+
+    except Exception:
+        import traceback
+        print("\n[异常]\n" + traceback.format_exc())
+
+    finally:
+        os.system("pause")
