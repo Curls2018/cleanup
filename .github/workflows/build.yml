@@ -21,7 +21,7 @@ jobs:
         run: pip install pyinstaller==5.13.2
 
       - name: Build exe
-        run: pyinstaller --onefile --noconsole cleanup.py
+        run: pyinstaller --onefile cleanup.py
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
@@ -47,7 +47,7 @@ jobs:
         run: pip install pyinstaller==5.13.2
 
       - name: Build exe
-        run: pyinstaller --onefile --noconsole cleanup.py
+        run: pyinstaller --onefile cleanup.py
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
