@@ -27,11 +27,10 @@ FOF_NOERRORUI    = 0x0400   # 不显示错误框
 
 def send_to_recycle(path):
     """调用 SHFileOperationW 将路径发送到回收站（与 Explorer 删除完全一致）"""
-    # SHFileOperation 要求路径以双 null 结尾
-    buf = ctypes.create_unicode_buffer(path + '\0')
+    # SHFileOperation 要求路径以双 null 结尾，c_wchar_p 自动加一个，再手动加一个
     op = SHFILEOPSTRUCTW()
     op.wFunc  = FO_DELETE
-    op.pFrom  = buf
+    op.pFrom  = path + '\0'
     op.fFlags = FOF_ALLOWUNDO | FOF_NOCONFIRMATION | FOF_SILENT | FOF_NOERRORUI
     ret = ctypes.windll.shell32.SHFileOperationW(ctypes.byref(op))
     return ret
