@@ -126,6 +126,24 @@ if __name__ == "__main__":
             if killed:
                 print("      已终止进程: %s" % ", ".join(killed))
 
+            # 诊断：打印目录树结构
+            print("      [诊断] 目录内容:")
+            total_diag = 0
+            for dp, dns, fns in os.walk(BACKUP, topdown=True):
+                level = dp.replace(BACKUP, '').count(os.sep)
+                indent = '  ' * (level + 4)
+                print("%s%s\\" % (indent, os.path.basename(dp)))
+                for fn in fns:
+                    print("%s  %s" % (indent, fn))
+                    total_diag += 1
+            print("      [诊断] os.walk 共发现 %d 个文件" % total_diag)
+            # 用 dir /a /s 列出所有文件（包括隐藏/系统）
+            print("      [诊断] dir /a /s 输出:")
+            subprocess.call(
+                'dir /a /s "%s"' % BACKUP,
+                shell=True
+            )
+
             recycled, scheduled, failed = recycle_tree(BACKUP)
             print("      已移入回收站: %d 个文件" % recycled)
             if failed:
