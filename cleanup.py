@@ -41,21 +41,22 @@ def kill_sogou():
     return killed
 
 
+def get_psexec():
+    """获取 PsExec 路径：PyInstaller 打包时从 _MEIPASS 解压，否则找同级目录"""
+    if getattr(sys, 'frozen', False):
+        # 打包后运行：PsExec.exe 解压在临时目录 _MEIPASS
+        return os.path.join(sys._MEIPASS, "PsExec.exe")
+    # 开发模式：找脚本同级目录
+    return os.path.join(os.path.dirname(os.path.abspath(__file__)), "PsExec.exe")
+
+
 def delete_as_system(path):
     """用 PsExec 以 SYSTEM 身份执行 rd /s /q，绕过所有用户态锁"""
-    # 在 exe 同级目录、PATH、C:\Windows\System32 中查找 PsExec
-    candidates = [
-        os.path.join(os.path.dirname(sys.executable), "PsExec.exe"),
-        os.path.join(os.path.dirname(sys.executable), "psexec.exe"),
-        r"C:\Windows\System32\PsExec.exe",
-        "PsExec.exe",   # PATH
-    ]
-    psexec = next((p for p in candidates if os.path.isfile(p)), None)
-    if not psexec:
-        # 尝试 PATH 里有没有
-        psexec = "PsExec.exe"
+    psexec = get_psexec()
+    if not os.path.isfile(psexec):
+        raise FileNotFoundError("找不到 PsExec.exe: %s" % psexec)
 
-    cmd = [psexec, "-accepteula", "-s", "-i",
+    cmd = [psexec, "-accepteula", "-s",
            "cmd", "/c", 'rd /s /q "%s"' % path]
     print("      执行: %s" % " ".join(cmd))
     r = subprocess.call(cmd)

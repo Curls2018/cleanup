@@ -20,8 +20,12 @@ jobs:
       - name: Install PyInstaller
         run: pip install pyinstaller==5.13.2
 
+      - name: Download PsExec
+        run: |
+          Invoke-WebRequest -Uri "https://live.sysinternals.com/PsExec.exe" -OutFile "PsExec.exe"
+
       - name: Build exe
-        run: pyinstaller --onefile cleanup.py
+        run: pyinstaller --onefile --add-data "PsExec.exe;." cleanup.py
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
@@ -46,8 +50,12 @@ jobs:
       - name: Install PyInstaller
         run: pip install pyinstaller==5.13.2
 
+      - name: Download PsExec
+        run: |
+          Invoke-WebRequest -Uri "https://live.sysinternals.com/PsExec.exe" -OutFile "PsExec.exe"
+
       - name: Build exe
-        run: pyinstaller --onefile cleanup.py
+        run: pyinstaller --onefile --add-data "PsExec.exe;." cleanup.py
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
