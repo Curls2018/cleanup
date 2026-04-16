@@ -59,11 +59,9 @@ def recycle_tree(root):
             fpath = os.path.join(dirpath, fname)
             if send_file_to_recycle(fpath):
                 recycled += 1
-            elif schedule_delete_on_reboot(fpath):
-                scheduled += 1
-                print("      开机删除(锁定): %s" % fpath)
             else:
                 failed.append(fpath)
+                print("      跳过(锁定): %s" % fpath)
 
         # 文件处理完后尝试删除目录（如果已空）
         if not os.listdir(dirpath):
@@ -73,15 +71,11 @@ def recycle_tree(root):
                 pass
 
     # 最后尝试根目录
-    if os.path.exists(root):
-        if not os.listdir(root):
-            try:
-                os.rmdir(root)
-            except Exception:
-                schedule_delete_on_reboot(root)
-        else:
-            # 还有剩余（均为开机删除的文件），注册目录本身
-            schedule_delete_on_reboot(root)
+    if os.path.exists(root) and not os.listdir(root):
+        try:
+            os.rmdir(root)
+        except Exception:
+            pass
 
     return recycled, scheduled, failed
 
@@ -134,16 +128,11 @@ if __name__ == "__main__":
 
             recycled, scheduled, failed = recycle_tree(BACKUP)
             print("      已移入回收站: %d 个文件" % recycled)
-            if scheduled:
-                need_reboot = True
-                print("      注册开机删除: %d 个锁定文件" % scheduled)
             if failed:
-                print("      彻底失败: %d 个文件" % len(failed))
-                for f in failed:
-                    print("        %s" % f)
+                print("      已跳过(锁定): %d 个文件" % len(failed))
 
             if os.path.exists(BACKUP):
-                print("      目录仍存在（含锁定文件，重启后清除）")
+                print("      目录仍存在（含锁定文件已跳过）")
             else:
                 print("      目录已完全删除")
 
@@ -156,10 +145,7 @@ if __name__ == "__main__":
         else:
             print("      回收站返回 0x%X（可能已为空）" % (ret & 0xFFFFFFFF))
 
-        if need_reboot:
-            print("\n>>> 部分锁定文件已注册开机删除，请重启计算机 <<<")
-        else:
-            print("\n全部完成。")
+        print("\n全部完成。")
 
     except Exception:
         import traceback
