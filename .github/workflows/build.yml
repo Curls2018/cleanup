@@ -15,10 +15,10 @@ jobs:
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.11'
+          python-version: '3.8'
 
       - name: Install PyInstaller
-        run: pip install pyinstaller
+        run: pip install pyinstaller==5.13.2
 
       - name: Build exe
         run: pyinstaller --onefile --noconsole cleanup.py
@@ -41,10 +41,10 @@ jobs:
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.11'
+          python-version: '3.8'
 
       - name: Install PyInstaller
-        run: pip install pyinstaller
+        run: pip install pyinstaller==5.13.2
 
       - name: Build exe
         run: pyinstaller --onefile --noconsole cleanup.py
