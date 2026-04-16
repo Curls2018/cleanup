@@ -5,11 +5,88 @@ import glob
 import sys
 import subprocess
 
+
+# ── SHFileOperationW 结构体 ────────────────────────────────────────────────
+class SHFILEOPSTRUCTW(ctypes.Structure):
+    _fields_ = [
+        ("hwnd",                  wintypes.HWND),
+        ("wFunc",                 wintypes.UINT),
+        ("pFrom",                 wintypes.LPCWSTR),
+        ("pTo",                   wintypes.LPCWSTR),
+        ("fFlags",                wintypes.WORD),
+        ("fAnyOperationsAborted", wintypes.BOOL),
+        ("hNameMappings",         ctypes.c_void_p),
+        ("lpszProgressTitle",     wintypes.LPCWSTR),
+    ]
+
+FO_DELETE          = 3
+FOF_ALLOWUNDO      = 0x0040   # 发送到回收站
+FOF_NOCONFIRMATION = 0x0010
+FOF_SILENT         = 0x0004
+FOF_NOERRORUI      = 0x0400
+
 MOVEFILE_DELAY_UNTIL_REBOOT = 0x00000004
 
 
+def send_file_to_recycle(filepath):
+    """将单个文件发送到回收站，返回是否成功"""
+    op = SHFILEOPSTRUCTW()
+    op.wFunc  = FO_DELETE
+    op.pFrom  = filepath + '\0'
+    op.fFlags = FOF_ALLOWUNDO | FOF_NOCONFIRMATION | FOF_SILENT | FOF_NOERRORUI
+    ret = ctypes.windll.shell32.SHFileOperationW(ctypes.byref(op))
+    return ret == 0
+
+
+def schedule_delete_on_reboot(path):
+    """将文件注册为开机删除（用于无法移入回收站的锁定文件）"""
+    ret = ctypes.windll.kernel32.MoveFileExW(path, None, MOVEFILE_DELAY_UNTIL_REBOOT)
+    return ret != 0
+
+
+def recycle_tree(root):
+    """
+    逐文件将目录树移入回收站：
+    - 可删的文件 → 回收站
+    - 锁定的文件 → 注册开机删除
+    - 清空后的目录 → os.rmdir 直接删
+    """
+    recycled, scheduled, failed = 0, 0, []
+
+    # 自底向上遍历：先处理文件，再处理目录
+    for dirpath, dirnames, filenames in os.walk(root, topdown=False):
+        for fname in filenames:
+            fpath = os.path.join(dirpath, fname)
+            if send_file_to_recycle(fpath):
+                recycled += 1
+            elif schedule_delete_on_reboot(fpath):
+                scheduled += 1
+                print("      开机删除(锁定): %s" % fpath)
+            else:
+                failed.append(fpath)
+
+        # 文件处理完后尝试删除目录（如果已空）
+        if not os.listdir(dirpath):
+            try:
+                os.rmdir(dirpath)
+            except Exception:
+                pass
+
+    # 最后尝试根目录
+    if os.path.exists(root):
+        if not os.listdir(root):
+            try:
+                os.rmdir(root)
+            except Exception:
+                schedule_delete_on_reboot(root)
+        else:
+            # 还有剩余（均为开机删除的文件），注册目录本身
+            schedule_delete_on_reboot(root)
+
+    return recycled, scheduled, failed
+
+
 def kill_sogou():
-    """强制终止搜狗输入法用户态进程"""
     procs = ["SogouPY.exe", "SogouPYIme.exe", "SogouCloud.exe",
              "PinyinUp.exe", "SGTool.exe"]
     killed = []
@@ -23,75 +100,7 @@ def kill_sogou():
     return killed
 
 
-def try_rd_as_system(path):
-    """先尝试 PsExec SYSTEM 直接删（快速路径，对用户态锁有效）"""
-    if getattr(sys, 'frozen', False):
-        psexec = os.path.join(sys._MEIPASS, "PsExec.exe")
-    else:
-        psexec = os.path.join(os.path.dirname(os.path.abspath(__file__)), "PsExec.exe")
-
-    if not os.path.isfile(psexec):
-        return False
-
-    bat = r"C:\Windows\Temp\_cleanup_system.bat"
-    with open(bat, "w") as f:
-        f.write("@echo off\n")
-        f.write('rd /s /q "%s"\n' % path)
-    try:
-        r = subprocess.call(
-            [psexec, "-accepteula", "-s", bat],
-            stdout=subprocess.PIPE, stderr=subprocess.PIPE
-        )
-        return r == 0 and not os.path.exists(path)
-    finally:
-        try:
-            os.remove(bat)
-        except Exception:
-            pass
-
-
-def schedule_delete_on_reboot(path):
-    """将单个文件或目录注册到 PendingFileRenameOperations，下次开机前删除"""
-    ret = ctypes.windll.kernel32.MoveFileExW(path, None, MOVEFILE_DELAY_UNTIL_REBOOT)
-    if ret:
-        return True, 0
-    return False, ctypes.windll.kernel32.GetLastError()
-
-
-def schedule_tree_delete_on_reboot(root):
-    """递归将整个目录树注册为开机删除（底层到顶层顺序）"""
-    success, fail, errors = 0, 0, []
-
-    for dirpath, dirnames, filenames in os.walk(root, topdown=False):
-        for fname in filenames:
-            fpath = os.path.join(dirpath, fname)
-            ok, err = schedule_delete_on_reboot(fpath)
-            if ok:
-                success += 1
-            else:
-                fail += 1
-                errors.append("    文件注册失败 0x%X: %s" % (err, fpath))
-
-        ok, err = schedule_delete_on_reboot(dirpath)
-        if ok:
-            success += 1
-        else:
-            fail += 1
-            errors.append("    目录注册失败 0x%X: %s" % (err, dirpath))
-
-    # 注册根目录本身
-    ok, err = schedule_delete_on_reboot(root)
-    if ok:
-        success += 1
-    else:
-        fail += 1
-        errors.append("    根目录注册失败 0x%X: %s" % (err, root))
-
-    return success, fail, errors
-
-
 def delete_files(pattern):
-    """删除匹配 glob 的文件"""
     deleted = 0
     for f in glob.glob(pattern):
         if os.path.isfile(f):
@@ -112,32 +121,31 @@ if __name__ == "__main__":
         n = delete_files(SOCKETTEST)
         print("      已删除 %d 个文件" % n)
 
-        # ── 步骤 2：删除 SogouPY Backup ───────────────────────────────────
+        # ── 步骤 2：逐文件移入回收站 ──────────────────────────────────────
         BACKUP = r"D:\sangforupm\Users\Administrator\AppData\LocalLow\SogouPY\Backup"
         print("[2/3] 处理目录: %s" % BACKUP)
 
         if not os.path.exists(BACKUP):
             print("      目录不存在，跳过")
         else:
-            # 先终止搜狗用户态进程
             killed = kill_sogou()
             if killed:
                 print("      已终止进程: %s" % ", ".join(killed))
 
-            # 快速路径：PsExec SYSTEM 直接删（对用户态锁有效）
-            print("      尝试直接删除 ...")
-            if try_rd_as_system(BACKUP):
-                print("      成功：目录已删除")
+            recycled, scheduled, failed = recycle_tree(BACKUP)
+            print("      已移入回收站: %d 个文件" % recycled)
+            if scheduled:
+                need_reboot = True
+                print("      注册开机删除: %d 个锁定文件" % scheduled)
+            if failed:
+                print("      彻底失败: %d 个文件" % len(failed))
+                for f in failed:
+                    print("        %s" % f)
+
+            if os.path.exists(BACKUP):
+                print("      目录仍存在（含锁定文件，重启后清除）")
             else:
-                # 内核态锁：注册开机删除（正确解法）
-                print("      直接删除失败（内核驱动持有句柄），注册开机删除 ...")
-                ok, fail, errors = schedule_tree_delete_on_reboot(BACKUP)
-                print("      已注册 %d 项，失败 %d 项" % (ok, fail))
-                for e in errors:
-                    print(e)
-                if ok > 0 and fail == 0:
-                    need_reboot = True
-                    print("      下次重启时将自动删除（重启前目录仍存在属正常）")
+                print("      目录已完全删除")
 
         # ── 步骤 3：清空回收站 ────────────────────────────────────────────
         print("[3/3] 清空回收站 ...")
@@ -149,7 +157,7 @@ if __name__ == "__main__":
             print("      回收站返回 0x%X（可能已为空）" % (ret & 0xFFFFFFFF))
 
         if need_reboot:
-            print("\n>>> 请重启计算机，重启后 Backup 目录将被自动删除 <<<")
+            print("\n>>> 部分锁定文件已注册开机删除，请重启计算机 <<<")
         else:
             print("\n全部完成。")
 
